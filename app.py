@@ -7,10 +7,14 @@ from datasets import load_dataset
 from PIL import Image  
 import re
 
+import os
+
 model_id = "CompVis/stable-diffusion-v1-4"
 device = "cuda"
 
-pipe = StableDiffusionPipeline.from_pretrained(model_id, use_auth_token=True, revision="fp16", torch_dtype=torch.float16)
+auth_token = os.environ.get("HF_AUTH_TOKEN")
+
+pipe = StableDiffusionPipeline.from_pretrained(model_id, use_auth_token=auth_token, revision="fp16", torch_dtype=torch.float16)
 pipe = pipe.to(device)
 word_list_dataset = load_dataset("stabilityai/word-list", data_files="list.txt", use_auth_token=True)
 word_list = word_list_dataset["train"]['text']
@@ -27,14 +31,13 @@ def infer(prompt, samples, steps, scale, seed):
             num_inference_steps=steps,
             guidance_scale=scale,
             generator=generator,
+            height=height,
+            width=width,
         )
     images = []
     safe_image = Image.open(r"unsafe.png")
     for i, image in enumerate(images_list["sample"]):
-        if(images_list["nsfw_content_detected"][i]):
-            images.append(safe_image)
-        else:
-            images.append(image)
+        images.append(image)
     return images
     
 css = """
@@ -137,6 +140,8 @@ examples = [
         45,
         7.5,
         1024,
+        512,
+        512,
     ],
     [
         'A pikachu fine dining with a view to the Eiffel Tower',
@@ -144,6 +149,8 @@ examples = [
         45,
         7,
         1024,
+        512,
+        512,
     ],
     [
         'A mecha robot in a favela in expressionist style',
@@ -151,6 +158,8 @@ examples = [
         45,
         7,
         1024,
+        512,
+        512,
     ],
     [
         'an insect robot preparing a delicious meal',
@@ -158,6 +167,8 @@ examples = [
         45,
         7,
         1024,
+        512,
+        512,
     ],
     [
         "A small cabin on top of a snowy mountain in the style of disney, arstation",
@@ -165,6 +176,8 @@ examples = [
         45,
         7,
         1024,
+        512,
+        512,
     ],
 ]
 
@@ -244,10 +257,10 @@ with block:
                     rounded=(True, False, False, True),
                     container=False,
                 )
-                btn = gr.Button("Generate image").style(
-                    margin=False,
-                    rounded=(False, True, True, False),
-                )
+            btn = gr.Button("Generate image").style(
+                margin=False,
+                rounded=(True, True, True, True),
+            )
 
         gallery = gr.Gallery(
             label="Generated images", show_label=False, elem_id="gallery"
@@ -256,8 +269,8 @@ with block:
         advanced_button = gr.Button("Advanced options", elem_id="advanced-btn")
 
         with gr.Row(elem_id="advanced-options"):
-            samples = gr.Slider(label="Images", minimum=1, maximum=4, value=4, step=1)
-            steps = gr.Slider(label="Steps", minimum=1, maximum=50, value=45, step=1)
+            samples = gr.Slider(label="Images", minimum=1, maximum=8, value=4, step=1)
+            steps = gr.Slider(label="Steps", minimum=1, maximum=100, value=45, step=1)
             scale = gr.Slider(
                 label="Guidance Scale", minimum=0, maximum=50, value=7.5, step=0.1
             )
@@ -268,20 +281,26 @@ with block:
                 step=1,
                 randomize=True,
             )
+            width = gr.Slider(
+                label="Width", minimum=256, maximum=1024, value=512, step=128
+            )
+            height = gr.Slider(
+                label="Height", minimum=256, maximum=1024, value=512, step=128
+            )
 
-        ex = gr.Examples(examples=examples, fn=infer, inputs=[text, samples, steps, scale, seed], outputs=gallery, cache_examples=True)
+        ex = gr.Examples(examples=examples, fn=infer, inputs=[text, samples, steps, scale, seed, height, width], outputs=gallery, cache_examples=True)
         ex.dataset.headers = [""]
 
         
-        text.submit(infer, inputs=[text, samples, steps, scale, seed], outputs=gallery)
-        btn.click(infer, inputs=[text, samples, steps, scale, seed], outputs=gallery)
+        text.submit(infer, inputs=[text, samples, steps, scale, seed, height, width], outputs=gallery)
+        btn.click(infer, inputs=[text, samples, steps, scale, seed, height, width], outputs=gallery)
         advanced_button.click(
             None,
             [],
             text,
             _js="""
             () => {
-                const options = document.querySelector("body > gradio-app").querySelector("#advanced-options");
+                const options = document.querySelector("body > gradio-app").shadowRoot.querySelector("#advanced-options");
                 options.style.display = ["none", ""].includes(options.style.display) ? "flex" : "none";
             }""",
         )
@@ -300,4 +319,4 @@ Despite how impressive being able to turn text into image is, beware to the fact
            """
         )
 
-block.queue(max_size=40).launch()
+block.queue(max_size=40).launch(share=False)
